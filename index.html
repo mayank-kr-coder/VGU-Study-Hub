@@ -1,0 +1,195 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VGU Study Hub</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<section class="login-screen" id="loginScreen">
+  <div class="login-card">
+    <div class="login-copy">
+      <p class="eyebrow">VGU Only</p>
+      <h1>Notes aur previous questions, sab students ke liye ek jagah.</h1>
+      <p>Freshers ko notes aur previous question papers ki sabse zyada zarurat hoti hai. Jo student help karna chahe wo upload kare, baaki students easily preview aur download kar sakte hain.</p>
+      <div class="login-points">
+        <div class="login-point"><span class="login-dot">1</span> Browse and download without login</div>
+        <div class="login-point"><span class="login-dot">2</span> Login only when you want to upload</div>
+        <div class="login-point"><span class="login-dot">3</span> Notes, lab files, question banks, previous papers</div>
+      </div>
+    </div>
+    <form class="login-form" id="loginForm">
+      <div>
+        <p class="eyebrow">Student Access</p>
+        <h2>Upload as a contributor</h2>
+        <p class="hint">Login with your name when you want to share notes. Just reading? Open the library directly.</p>
+      </div>
+      <div class="field">
+        <label for="studentName">Full name</label>
+        <input class="control" id="studentName" placeholder="Example: Rahul Sharma" required>
+      </div>
+      <div class="field">
+        <label for="studentEmail">College email</label>
+        <input class="control" id="studentEmail" type="email" placeholder="student@yourcollege.edu" required>
+      </div>
+      <div class="field">
+        <label for="studentBranch">Branch / Department</label>
+        <select id="studentBranch" required>
+          <option value="Computer Science">Computer Science</option>
+          <option value="Information Technology">Information Technology</option>
+          <option value="Electronics">Electronics</option>
+          <option value="Mechanical">Mechanical</option>
+          <option value="Civil">Civil</option>
+          <option value="Commerce">Commerce</option>
+        </select>
+      </div>
+      <div class="login-actions">
+        <button class="primary" type="submit">Login to Upload</button>
+        <button class="secondary" id="browseGuest" type="button">Browse Library</button>
+      </div>
+    </form>
+  </div>
+</section>
+
+<div class="app hidden" id="appShell">
+  <header class="topbar">
+    <div class="brand">
+      <div class="brand-mark">VGU</div>
+      <div>
+        <h1>VGU Study Hub</h1>
+        <span>Notes and previous questions for VGU students</span>
+      </div>
+    </div>
+    <nav class="nav" aria-label="Main">
+      <button class="active" data-nav="All" type="button">Notes</button>
+      <button data-nav="Question Paper" type="button">Question Papers</button>
+      <button data-nav="Rewards" type="button">Rewards</button>
+    </nav>
+    <div class="user-chip">
+      <span id="userLabel">Student</span>
+      <div class="avatar" id="userAvatar">S</div>
+      <button id="logoutBtn" type="button">Logout</button>
+    </div>
+  </header>
+
+  <main class="layout">
+    <aside>
+      <section class="panel">
+        <p class="eyebrow">Campus Library</p>
+        <h2>Freshers ke liye notes, seniors ke liye sharing.</h2>
+        <p class="hint">Agar notes chahiye to search karo, preview karo, download karo. Agar tumhare paas useful PDF hai to login karke upload kar do.</p>
+        <div class="reward">
+          <strong>Top student of week</strong>
+          <span id="weeklyWinner">Helpful contributors will appear here after real uploads.</span>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h3>Semester Filter</h3>
+        <div class="segmented" id="semesterTabs">
+          <button class="active" data-semester="All" type="button">All</button>
+          <button data-semester="1" type="button">S1</button>
+          <button data-semester="2" type="button">S2</button>
+          <button data-semester="3" type="button">S3</button>
+          <button data-semester="4" type="button">S4</button>
+          <button data-semester="5" type="button">S5</button>
+          <button data-semester="6" type="button">S6</button>
+          <button data-semester="7" type="button">S7</button>
+        </div>
+        <div class="field">
+          <label for="subjectFilter">Subject</label>
+          <select id="subjectFilter"></select>
+        </div>
+      </section>
+    </aside>
+
+    <section class="main">
+      <div class="toolbar">
+        <input class="control" id="searchInput" type="search" placeholder="Search notes, questions, subjects, units, or students">
+        <select id="sortSelect" class="control" aria-label="Sort notes">
+          <option value="popular">Most downloaded</option>
+          <option value="newest">Newest first</option>
+          <option value="az">Subject A-Z</option>
+        </select>
+        <select id="typeFilter" class="control" aria-label="Filter by type">
+          <option value="All">All materials</option>
+          <option value="Notes">Notes</option>
+          <option value="Question Paper">Question Paper</option>
+          <option value="Lab Manual">Lab Manual</option>
+          <option value="Question Bank">Question Bank</option>
+        </select>
+      </div>
+
+      <form class="upload-box" id="uploadForm">
+        <div class="upload-intro">
+          <strong>Share helpful material</strong>
+          <span>Notes, previous papers, question banks, lab manuals</span>
+        </div>
+        <div class="field">
+          <label for="noteTitle">Note title</label>
+          <input class="control" id="noteTitle" placeholder="Example: DBMS Unit 3 or 2025 Question Paper" required>
+        </div>
+        <div class="field">
+          <label for="noteSubject">Subject</label>
+          <input class="control" id="noteSubject" placeholder="DBMS" required>
+        </div>
+        <div class="field">
+          <label for="noteSemester">Semester</label>
+          <select id="noteSemester" required>
+            <option value="1">S1</option>
+            <option value="2">S2</option>
+            <option value="3">S3</option>
+            <option value="4">S4</option>
+            <option value="5">S5</option>
+            <option value="6">S6</option>
+            <option value="7">S7</option>
+            <option value="8">S8</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="noteType">Type</label>
+          <select id="noteType" required>
+            <option value="Notes">Notes</option>
+            <option value="Question Paper">Question Paper</option>
+            <option value="Lab Manual">Lab Manual</option>
+            <option value="Question Bank">Question Bank</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="noteFile">PDF file</label>
+          <input class="control" id="noteFile" type="file" accept="application/pdf,.pdf">
+        </div>
+        <button class="primary" type="submit">Upload</button>
+      </form>
+
+      <div class="notes-list" id="notesList"></div>
+    </section>
+
+    <aside class="right-column">
+      <section class="viewer">
+        <div class="viewer-head">
+          <div class="viewer-title">
+            <strong id="viewerName">Select a note</strong>
+            <span id="viewerMeta">PDF preview opens here</span>
+          </div>
+          <button class="icon-btn" id="openPdf" type="button" title="Open PDF">O</button>
+        </div>
+        <iframe class="pdf-frame" id="pdfFrame" title="PDF viewer"></iframe>
+      </section>
+
+      <section class="panel">
+        <p class="eyebrow">Leaderboard</p>
+        <h3>Top Contributors</h3>
+        <div class="leaderboard" id="leaderboard"></div>
+      </section>
+    </aside>
+  </main>
+</div>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script src="script.js"></script>
+</body>
+</html>
+
