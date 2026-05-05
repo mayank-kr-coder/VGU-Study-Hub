@@ -1,9 +1,10 @@
 ﻿const samplePdf = "data:application/pdf;base64,JVBERi0xLjQKMSAwIG9iago8PCAvVHlwZSAvQ2F0YWxvZyAvUGFnZXMgMiAwIFIgPj4KZW5kb2JqCjIgMCBvYmoKPDwgL1R5cGUgL1BhZ2VzIC9LaWRzIFszIDAgUl0gL0NvdW50IDEgPj4KZW5kb2JqCjMgMCBvYmoKPDwgL1R5cGUgL1BhZ2UgL1BhcmVudCAyIDAgUiAvTWVkaWFCb3ggWzAgMCA2MTIgNzkyXSAvUmVzb3VyY2VzIDw8IC9Gb250IDw8IC9GMSA0IDAgUiA+PiA+PiAvQ29udGVudHMgNSAwIFIgPj4KZW5kb2JqCjQgMCBvYmoKPDwgL1R5cGUgL0ZvbnQgL1N1YnR5cGUgL1R5cGUxIC9CYXNlRm9udCAvSGVsdmV0aWNhID4+CmVuZG9iago1IDAgb2JqCjw8IC9MZW5ndGggMTgzID4+CnN0cmVhbQpCVAovRjEgMjggVGYKNzIgNzAwIFRkCihZb3VyIENvbGxlZ2UgTm90ZXMgSHViKSBUagovRjEgMTYgVGYKMCAtNDggVGQKKFByZXZpZXcgc2FtcGxlOiBzdHVkZW50cyBjYW4gcmVhZCBub3RlcyBpbnNpZGUgdGhlIHdlYnNpdGUuKSBUagowIC0zMiBUZAooVXBsb2FkLCBmaWx0ZXIsIHNlYXJjaCwgYW5kIGRvd25sb2FkIG5vdGVzIGJ5IHNlbWVzdGVyLikuKSBUagpFVAplbmRzdHJlYW0KZW5kb2JqCnhyZWYKMCA2CjAwMDAwMDAwMDAgNjU1MzUgZiAKMDAwMDAwMDAwOSAwMDAwMCBuIAowMDAwMDAwMDU4IDAwMDAwIG4gCjAwMDAwMDAxMTUgMDAwMDAgbiAKMDAwMDAwMDI3NCAwMDAwMCBuIAowMDAwMDAwMzQ0IDAwMDAwIG4gCnRyYWlsZXIKPDwgL1Jvb3QgMSAwIFIgL1NpemUgNiA+PgpzdGFydHhyZWYKNjc3CiUlRU9G";
 
-const demoContributors = new Set(["Ananya Rao", "Rohan Mehta", "Maya Shah", "Arjun Nair", "Ishita Verma"]);
+const oldSampleContributors = new Set(["Ananya Rao", "Rohan Mehta", "Maya Shah", "Arjun Nair", "Ishita Verma"]);
+let sharedLibrary = false;
 
 const state = {
-  notes: JSON.parse(localStorage.getItem("collegeNotes") || "[]"),
+  notes: [],
   user: JSON.parse(localStorage.getItem("collegeUser") || "null"),
   semester: "All",
   subject: "All",
@@ -71,17 +72,58 @@ function requireLogin() {
 }
 
 function saveNotes() {
-  localStorage.setItem("collegeNotes", JSON.stringify(state.notes));
+  if (!sharedLibrary) {
+    localStorage.setItem("collegeNotes", JSON.stringify(state.notes));
+  }
 }
 
 function normalizeSavedNotes() {
   state.notes = state.notes
-    .filter(note => !demoContributors.has(note.contributor))
-    .map(note => ({
-      ...note,
-      type: note.type === "PDF" ? "Notes" : note.type
-    }));
+    .filter(note => !oldSampleContributors.has(note.contributor))
+    .map(normalizeNote);
   saveNotes();
+}
+
+function normalizeNote(note) {
+  return {
+    ...note,
+    type: note.type === "PDF" ? "Notes" : note.type,
+    downloads: Number(note.downloads || 0),
+    likedBy: Array.isArray(note.likedBy) ? note.likedBy : [],
+    comments: Array.isArray(note.comments) ? note.comments : []
+  };
+}
+
+function escapeHtml(value) {
+  return String(value || "").replace(/[&<>"']/g, char => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    "\"": "&quot;",
+    "'": "&#039;"
+  }[char]));
+}
+
+async function apiRequest(path, options = {}) {
+  const response = await fetch(path, options);
+  const contentType = response.headers.get("content-type") || "";
+  const payload = contentType.includes("application/json") ? await response.json() : null;
+  if (!response.ok) {
+    throw new Error(payload?.error || "Something went wrong. Please try again.");
+  }
+  return payload;
+}
+
+async function loadNotes() {
+  try {
+    const payload = await apiRequest("/api/notes");
+    sharedLibrary = true;
+    state.notes = (payload.notes || []).map(normalizeNote);
+  } catch (error) {
+    sharedLibrary = false;
+    state.notes = JSON.parse(localStorage.getItem("collegeNotes") || "[]");
+    normalizeSavedNotes();
+  }
 }
 
 function showToast(message) {
@@ -97,6 +139,10 @@ function isOwner(note) {
   return note.contributor === state.user.name;
 }
 
+function isLiked(note) {
+  return Boolean(state.user?.email && note.likedBy.includes(state.user.email.toLowerCase()));
+}
+
 function filteredNotes() {
   const search = state.search.trim().toLowerCase();
   return state.notes
@@ -110,7 +156,7 @@ function filteredNotes() {
     .sort((a, b) => {
       if (state.sort === "newest") return new Date(b.createdAt) - new Date(a.createdAt);
       if (state.sort === "az") return a.subject.localeCompare(b.subject) || a.title.localeCompare(b.title);
-      return b.downloads - a.downloads;
+      return (b.downloads + b.likedBy.length) - (a.downloads + a.likedBy.length);
     });
 }
 
@@ -122,7 +168,7 @@ function renderSubjectFilter() {
 
 function renderStats() {
   const top = buildLeaders()[0];
-  document.getElementById("weeklyWinner").textContent = top ? `${top.name} is helping students this week.` : "Real contributors will appear here after uploads.";
+  document.getElementById("weeklyWinner").textContent = top ? `${top.name} is helping students this week.` : "Contributor highlights will start after student uploads.";
 }
 
 function buildLeaders() {
@@ -139,7 +185,7 @@ function buildLeaders() {
 function renderLeaderboard() {
   const leaders = buildLeaders().slice(0, 5);
   if (!leaders.length) {
-    document.getElementById("leaderboard").innerHTML = `<div class="empty">Leaderboard will start after students upload notes or question papers.</div>`;
+    document.getElementById("leaderboard").innerHTML = `<div class="empty">No contributors yet. The leaderboard will start after students upload useful material.</div>`;
     return;
   }
   document.getElementById("leaderboard").innerHTML = leaders.map((leader, index) => `
@@ -157,7 +203,7 @@ function renderLeaderboard() {
 function renderNotes() {
   const notes = filteredNotes();
   if (!notes.length) {
-    notesList.innerHTML = `<div class="empty">Library abhi fresh hai. Pehla useful note ya previous question paper upload karke juniors ki help karo.</div>`;
+    notesList.innerHTML = `<div class="empty">The library is fresh right now. Upload the first useful note, lab manual, or previous paper to help VGU students.</div>`;
     return;
   }
 
@@ -165,25 +211,53 @@ function renderNotes() {
     const deleteButton = isOwner(note)
       ? `<button class="icon-btn danger-btn" type="button" title="Delete upload" data-action="delete" data-id="${note.id}">Del</button>`
       : "";
+    const comments = note.comments.slice(0, 3).map(comment => `
+      <div class="comment">
+        <div>
+          <strong>${escapeHtml(comment.author)}</strong>
+          <span>${new Date(comment.createdAt).toLocaleDateString()}</span>
+        </div>
+        <p>${escapeHtml(comment.text)}</p>
+      </div>
+    `).join("");
+    const moreComments = note.comments.length > 3
+      ? `<div class="comment-more">${note.comments.length - 3} more comments</div>`
+      : "";
+    const likedClass = isLiked(note) ? "liked" : "";
     return `
     <article class="card">
       <div>
         <div class="status-row">
           <span class="pill">S${note.semester}</span>
-          <span class="pill ${note.type.includes("Question") ? "question" : "verified"}">${note.type}</span>
-          <span class="pill verified">Verified</span>
+          <span class="pill ${note.type.includes("Question") ? "question" : "student-badge"}">${escapeHtml(note.type)}</span>
+          <span class="pill student-badge">Student Upload</span>
         </div>
-        <h3>${note.title}</h3>
+        <h3>${escapeHtml(note.title)}</h3>
         <div class="meta">
-          <span>${note.subject}</span>
-          <span>Shared by ${note.contributor}</span>
+          <span>${escapeHtml(note.subject)}</span>
+          <span>Shared by ${escapeHtml(note.contributor)}</span>
           <span>${note.downloads} downloads</span>
+          <span>${note.likedBy.length} likes</span>
+          <span>${note.comments.length} comments</span>
           <span>${new Date(note.createdAt).toLocaleDateString()}</span>
+        </div>
+        <div class="engagement">
+          <button class="like-btn ${likedClass}" type="button" data-action="like" data-id="${note.id}">
+            ${isLiked(note) ? "Liked" : "Like"} (${note.likedBy.length})
+          </button>
+          <div class="comments">
+            ${comments || `<div class="comment-empty">No comments yet.</div>`}
+            ${moreComments}
+            <form class="comment-form" data-id="${note.id}">
+              <input class="control" name="comment" maxlength="400" placeholder="Write a helpful comment">
+              <button class="secondary" type="submit">Comment</button>
+            </form>
+          </div>
         </div>
       </div>
       <div class="actions">
-        <button class="icon-btn" type="button" title="Preview PDF" data-action="preview" data-id="${note.id}">P</button>
-        <button class="icon-btn" type="button" title="Download PDF" data-action="download" data-id="${note.id}">D</button>
+        <button class="icon-btn" type="button" title="Preview PDF" data-action="preview" data-id="${note.id}">Preview</button>
+        <button class="icon-btn" type="button" title="Download PDF" data-action="download" data-id="${note.id}">Download</button>
         ${deleteButton}
       </div>
     </article>
@@ -206,11 +280,21 @@ function selectNote(id) {
   pdfFrame.src = note.url;
 }
 
-function downloadNote(id) {
+async function downloadNote(id) {
   const note = state.notes.find(item => item.id === id);
   if (!note) return;
-  note.downloads += 1;
-  saveNotes();
+  if (sharedLibrary) {
+    try {
+      const payload = await apiRequest(`/api/notes/${encodeURIComponent(id)}/download`, { method: "POST" });
+      note.downloads = payload.downloads;
+    } catch (error) {
+      showToast(error.message);
+      return;
+    }
+  } else {
+    note.downloads += 1;
+    saveNotes();
+  }
   render();
   selectNote(note.id);
 
@@ -223,20 +307,112 @@ function downloadNote(id) {
   showToast("Download started and leaderboard updated.");
 }
 
-function deleteNote(id) {
+async function deleteNote(id) {
   const note = state.notes.find(item => item.id === id);
   if (!note) return;
   if (!isOwner(note)) {
-    showToast("Sirf uploader apna upload delete kar sakta hai.");
+    showToast("Only the original uploader can delete this material.");
     return;
   }
   const confirmed = window.confirm(`Delete "${note.title}" from the library?`);
   if (!confirmed) return;
+  if (sharedLibrary) {
+    try {
+      await apiRequest(`/api/notes/${encodeURIComponent(id)}?email=${encodeURIComponent(state.user?.email || "")}`, {
+        method: "DELETE"
+      });
+    } catch (error) {
+      showToast(error.message);
+      return;
+    }
+  }
   state.notes = state.notes.filter(item => item.id !== id);
   saveNotes();
   render();
   selectNote(state.notes[0]?.id);
   showToast("Upload deleted.");
+}
+
+async function toggleLike(id) {
+  const note = state.notes.find(item => item.id === id);
+  if (!note) return;
+  if (!state.user) {
+    showLogin();
+    showToast("Please login to like material.");
+    return;
+  }
+
+  if (sharedLibrary) {
+    try {
+      const payload = await apiRequest(`/api/notes/${encodeURIComponent(id)}/like`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          email: state.user.email,
+          name: state.user.name
+        })
+      });
+      Object.assign(note, normalizeNote(payload.note));
+    } catch (error) {
+      showToast(error.message);
+      return;
+    }
+  } else {
+    const email = state.user.email.toLowerCase();
+    note.likedBy = note.likedBy.includes(email)
+      ? note.likedBy.filter(item => item !== email)
+      : [...note.likedBy, email];
+    saveNotes();
+  }
+
+  render();
+  selectNote(note.id);
+}
+
+async function addComment(id, text) {
+  const note = state.notes.find(item => item.id === id);
+  if (!note) return;
+  if (!state.user) {
+    showLogin();
+    showToast("Please login to comment.");
+    return;
+  }
+  const commentText = text.trim();
+  if (!commentText) {
+    showToast("Please write a comment first.");
+    return;
+  }
+
+  if (sharedLibrary) {
+    try {
+      const payload = await apiRequest(`/api/notes/${encodeURIComponent(id)}/comments`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          author: state.user.name,
+          email: state.user.email,
+          text: commentText
+        })
+      });
+      Object.assign(note, normalizeNote(payload.note));
+    } catch (error) {
+      showToast(error.message);
+      return;
+    }
+  } else {
+    note.comments.unshift({
+      id: `c${Date.now()}`,
+      author: state.user.name,
+      email: state.user.email.toLowerCase(),
+      text: commentText,
+      createdAt: new Date().toISOString()
+    });
+    saveNotes();
+  }
+
+  render();
+  selectNote(note.id);
+  showToast("Comment added.");
 }
 
 function render() {
@@ -294,12 +470,21 @@ notesList.addEventListener("click", event => {
   if (button.dataset.action === "preview") selectNote(button.dataset.id);
   if (button.dataset.action === "download") downloadNote(button.dataset.id);
   if (button.dataset.action === "delete") deleteNote(button.dataset.id);
+  if (button.dataset.action === "like") toggleLike(button.dataset.id);
+});
+
+notesList.addEventListener("submit", event => {
+  const form = event.target.closest(".comment-form");
+  if (!form) return;
+  event.preventDefault();
+  const input = form.elements.comment;
+  addComment(form.dataset.id, input.value);
 });
 
 function readPdfFile(file) {
   return new Promise((resolve, reject) => {
     if (!file) {
-      resolve(samplePdf);
+      reject(new Error("Please select a PDF file before uploading."));
       return;
     }
     const reader = new FileReader();
@@ -313,7 +498,7 @@ document.getElementById("uploadForm").addEventListener("submit", async event => 
   event.preventDefault();
   if (!state.user) {
     showLogin();
-    showToast("Login karke upload karo. Browse/download ke liye login zaruri nahi hai.");
+    showToast("Please login to upload. Browsing and downloads are open.");
     return;
   }
   const title = document.getElementById("noteTitle").value.trim();
@@ -323,26 +508,56 @@ document.getElementById("uploadForm").addEventListener("submit", async event => 
   const file = document.getElementById("noteFile").files[0];
   if (!title || !subject || !semester) return;
 
-  const url = await readPdfFile(file);
-  const note = {
-    id: `n${Date.now()}`,
-    title,
-    subject,
-    semester,
-    type,
-    contributor: state.user?.name || "Student",
-    uploaderEmail: state.user?.email || "",
-    downloads: 0,
-    createdAt: new Date().toISOString(),
-    url
-  };
-  state.notes.unshift(note);
+  let note;
+  if (sharedLibrary) {
+    const formData = new FormData();
+    formData.append("title", title);
+    formData.append("subject", subject);
+    formData.append("semester", semester);
+    formData.append("type", type);
+    formData.append("contributor", state.user?.name || "Student");
+    formData.append("uploaderEmail", state.user?.email || "");
+    formData.append("file", file);
+    try {
+      const payload = await apiRequest("/api/notes", {
+        method: "POST",
+        body: formData
+      });
+      note = payload.note;
+    } catch (error) {
+      showToast(error.message);
+      return;
+    }
+  } else {
+    let url;
+    try {
+      url = await readPdfFile(file);
+    } catch (error) {
+      showToast(error.message);
+      return;
+    }
+    note = {
+      id: `n${Date.now()}`,
+      title,
+      subject,
+      semester,
+      type,
+      contributor: state.user?.name || "Student",
+      uploaderEmail: state.user?.email || "",
+      downloads: 0,
+      likedBy: [],
+      comments: [],
+      createdAt: new Date().toISOString(),
+      url
+    };
+  }
+  state.notes.unshift(normalizeNote(note));
   state.subject = "All";
   saveNotes();
   event.target.reset();
   render();
   selectNote(note.id);
-  showToast("Note uploaded to VGU Study Hub.");
+  showToast("Material uploaded to VGU Study Hub.");
 });
 
 openPdf.addEventListener("click", () => {
@@ -362,7 +577,7 @@ document.getElementById("loginForm").addEventListener("submit", event => {
 
 document.getElementById("browseGuest").addEventListener("click", () => {
   browseAsGuest();
-  showToast("Library open hai. Upload ke liye login karna hoga.");
+  showToast("Library opened. Login is needed only for uploading.");
 });
 
 document.getElementById("logoutBtn").addEventListener("click", () => {
@@ -371,7 +586,11 @@ document.getElementById("logoutBtn").addEventListener("click", () => {
   showLogin();
 });
 
-normalizeSavedNotes();
-render();
-selectNote(state.notes[0]?.id);
-requireLogin();
+async function init() {
+  await loadNotes();
+  render();
+  selectNote(state.notes[0]?.id);
+  requireLogin();
+}
+
+init();

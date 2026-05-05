@@ -11,19 +11,19 @@
   <div class="login-card">
     <div class="login-copy">
       <p class="eyebrow">VGU Only</p>
-      <h1>Notes aur previous questions, sab students ke liye ek jagah.</h1>
-      <p>Freshers ko notes aur previous question papers ki sabse zyada zarurat hoti hai. Jo student help karna chahe wo upload kare, baaki students easily preview aur download kar sakte hain.</p>
+      <h1>VGU notes, previous papers, and lab material in one place.</h1>
+      <p>A student-built study library for VGU. Browse without login, download what helps, and upload material only when you want to contribute.</p>
       <div class="login-points">
-        <div class="login-point"><span class="login-dot">1</span> Browse and download without login</div>
-        <div class="login-point"><span class="login-dot">2</span> Login only when you want to upload</div>
-        <div class="login-point"><span class="login-dot">3</span> Notes, lab files, question banks, previous papers</div>
+        <div class="login-point"><span class="login-dot">1</span> Open access for reading and downloading</div>
+        <div class="login-point"><span class="login-dot">2</span> Contributor login for uploads</div>
+        <div class="login-point"><span class="login-dot">3</span> Semester-wise notes, labs, and papers</div>
       </div>
     </div>
     <form class="login-form" id="loginForm">
       <div>
         <p class="eyebrow">Student Access</p>
         <h2>Upload as a contributor</h2>
-        <p class="hint">Login with your name when you want to share notes. Just reading? Open the library directly.</p>
+        <p class="hint">Use your real name so students know who shared the material. If you only want to study, open the library directly.</p>
       </div>
       <div class="field">
         <label for="studentName">Full name</label>
@@ -31,7 +31,7 @@
       </div>
       <div class="field">
         <label for="studentEmail">College email</label>
-        <input class="control" id="studentEmail" type="email" placeholder="student@yourcollege.edu" required>
+        <input class="control" id="studentEmail" type="email" placeholder="student@vgu.ac.in" required>
       </div>
       <div class="field">
         <label for="studentBranch">Branch / Department</label>
@@ -77,12 +77,17 @@
     <aside>
       <section class="panel">
         <p class="eyebrow">Campus Library</p>
-        <h2>Freshers ke liye notes, seniors ke liye sharing.</h2>
-        <p class="hint">Agar notes chahiye to search karo, preview karo, download karo. Agar tumhare paas useful PDF hai to login karke upload kar do.</p>
+        <h2>Study material shared by students, for students.</h2>
+        <p class="hint">Search by subject or semester, preview PDFs, and download useful notes or previous papers. Contributors can upload clean PDF files after login.</p>
         <div class="reward">
           <strong>Top student of week</strong>
           <span id="weeklyWinner">Helpful contributors will appear here after real uploads.</span>
         </div>
+      </section>
+
+      <section class="panel">
+        <h3>Upload Guidelines</h3>
+        <p class="hint">Share only useful PDFs: class notes, previous papers, lab manuals, question banks, or revision sheets. Keep titles clear so freshers can find material quickly.</p>
       </section>
 
       <section class="panel">
@@ -128,7 +133,7 @@
         </div>
         <div class="field">
           <label for="noteTitle">Note title</label>
-          <input class="control" id="noteTitle" placeholder="Example: DBMS Unit 3 or 2025 Question Paper" required>
+          <input class="control" id="noteTitle" placeholder="DBMS Unit 3 Notes or 2025 End Sem Paper" required>
         </div>
         <div class="field">
           <label for="noteSubject">Subject</label>
@@ -158,7 +163,7 @@
         </div>
         <div class="field">
           <label for="noteFile">PDF file</label>
-          <input class="control" id="noteFile" type="file" accept="application/pdf,.pdf">
+          <input class="control" id="noteFile" type="file" accept="application/pdf,.pdf" required>
         </div>
         <button class="primary" type="submit">Upload</button>
       </form>
@@ -173,7 +178,7 @@
             <strong id="viewerName">Select a note</strong>
             <span id="viewerMeta">PDF preview opens here</span>
           </div>
-          <button class="icon-btn" id="openPdf" type="button" title="Open PDF">O</button>
+          <button class="icon-btn" id="openPdf" type="button" title="Open PDF">Open</button>
         </div>
         <iframe class="pdf-frame" id="pdfFrame" title="PDF viewer"></iframe>
       </section>
@@ -185,6 +190,21 @@
       </section>
     </aside>
   </main>
+
+  <footer class="site-footer">
+    <div class="footer-brand">
+      <div class="footer-logo">MK</div>
+      <div>
+        <strong>Mayank Kumar</strong>
+        <span>CSE Student / VGU Study Hub</span>
+      </div>
+    </div>
+    <p>Built to help VGU students find notes, previous papers, and useful study material faster.</p>
+    <div class="social-links" aria-label="Mayank Kumar social media links">
+      <a class="youtube-link" href="https://www.youtube.com/@mayank.vlogs13" target="_blank" rel="noopener noreferrer">YouTube</a>
+      <a class="instagram-link" href="https://www.instagram.com/krmyk.01" target="_blank" rel="noopener noreferrer">Instagram</a>
+    </div>
+  </footer>
 </div>
 
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
