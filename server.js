@@ -4,10 +4,13 @@ const path = require("path");
 const { URL } = require("url");
 
 const rootDir = __dirname;
-const dataDir = path.join(rootDir, "data");
-const uploadsDir = path.join(rootDir, "uploads");
+const storageDir = process.env.STORAGE_DIR ? path.resolve(process.env.STORAGE_DIR) : rootDir;
+const dataDir = process.env.DATA_DIR ? path.resolve(process.env.DATA_DIR) : path.join(storageDir, "data");
+const uploadsDir = process.env.UPLOADS_DIR ? path.resolve(process.env.UPLOADS_DIR) : path.join(storageDir, "uploads");
 const notesFile = path.join(dataDir, "notes.json");
+const usersFile = path.join(dataDir, "users.json");
 const maxUploadBytes = 25 * 1024 * 1024;
+const otpExpiryMs = 5 * 60 * 1000;
 const port = Number(process.env.PORT || 3000);
 
 fs.mkdirSync(dataDir, { recursive: true });
@@ -22,7 +25,23 @@ function readNotes() {
 }
 
 function writeNotes(notes) {
-  fs.writeFileSync(notesFile, JSON.stringify(notes.map(normalizeNote), null, 2));
+  const tempFile = `${notesFile}.tmp`;
+  fs.writeFileSync(tempFile, JSON.stringify(notes.map(normalizeNote), null, 2));
+  fs.renameSync(tempFile, notesFile);
+}
+
+function readUsers() {
+  try {
+    return JSON.parse(fs.readFileSync(usersFile, "utf8"));
+  } catch (error) {
+    return {};
+  }
+}
+
+function writeUsers(users) {
+  const tempFile = `${usersFile}.tmp`;
+  fs.writeFileSync(tempFile, JSON.stringify(users, null, 2));
+  fs.renameSync(tempFile, usersFile);
 }
 
 function normalizeNote(note) {
@@ -32,6 +51,33 @@ function normalizeNote(note) {
     likedBy: Array.isArray(note.likedBy) ? note.likedBy : [],
     comments: Array.isArray(note.comments) ? note.comments : []
   };
+}
+
+function cleanText(value, fallback = "") {
+  return String(value || fallback).trim().slice(0, 160);
+}
+
+function cleanEmail(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function publicUser(user) {
+  return {
+    name: user.name,
+    email: user.email,
+    branch: user.branch,
+    verified: Boolean(user.verified)
+  };
+}
+
+function findVerifiedUser(email) {
+  const users = readUsers();
+  const user = users[cleanEmail(email)];
+  return user?.verified ? user : null;
+}
+
+function createOtp() {
+  return String(Math.floor(100000 + Math.random() * 900000));
 }
 
 function sendJson(res, statusCode, payload) {
@@ -117,12 +163,26 @@ async function parseMultipart(req) {
 
 function serveStatic(req, res, pathname) {
   const requestedPath = pathname === "/" ? "/index.html" : pathname;
+  if (requestedPath.startsWith("/uploads/")) {
+    const uploadPath = path.normalize(path.join(uploadsDir, requestedPath.replace(/^\/uploads\//, "")));
+    if (!uploadPath.startsWith(uploadsDir)) {
+      sendJson(res, 403, { error: "Forbidden" });
+      return;
+    }
+    serveFile(res, uploadPath);
+    return;
+  }
+
   const filePath = path.normalize(path.join(rootDir, requestedPath));
   if (!filePath.startsWith(rootDir)) {
     sendJson(res, 403, { error: "Forbidden" });
     return;
   }
 
+  serveFile(res, filePath);
+}
+
+function serveFile(res, filePath) {
   fs.readFile(filePath, (error, content) => {
     if (error) {
       sendJson(res, 404, { error: "Not found" });
@@ -143,8 +203,129 @@ function serveStatic(req, res, pathname) {
 async function handleApi(req, res, url) {
   const notes = readNotes();
 
+  if (req.method === "POST" && url.pathname === "/api/auth/request-otp") {
+    try {
+      const body = await parseJsonBody(req);
+      const name = cleanText(body.name);
+      const email = cleanEmail(body.email);
+      const branch = cleanText(body.branch);
+      if (!name || !email || !branch) {
+        sendJson(res, 400, { error: "Please enter name, email, and branch." });
+        return;
+      }
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        sendJson(res, 400, { error: "Please enter a valid email address." });
+        return;
+      }
+
+      const users = readUsers();
+      const otp = createOtp();
+      users[email] = {
+        ...(users[email] || {}),
+        name,
+        email,
+        branch,
+        pendingOtp: otp,
+        otpExpiresAt: Date.now() + otpExpiryMs,
+        verified: Boolean(users[email]?.verified),
+        updatedAt: new Date().toISOString()
+      };
+      writeUsers(users);
+      console.log(`OTP for ${email}: ${otp}`);
+      sendJson(res, 200, {
+        message: "OTP generated. Check the server console.",
+        devOtp: otp,
+        expiresInSeconds: Math.floor(otpExpiryMs / 1000)
+      });
+    } catch (error) {
+      sendJson(res, 400, { error: error.message });
+    }
+    return;
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/auth/verify-otp") {
+    try {
+      const body = await parseJsonBody(req);
+      const email = cleanEmail(body.email);
+      const otp = cleanText(body.otp);
+      const users = readUsers();
+      const user = users[email];
+      if (!user || !user.pendingOtp) {
+        sendJson(res, 400, { error: "Please request an OTP first." });
+        return;
+      }
+      if (Date.now() > Number(user.otpExpiresAt || 0)) {
+        sendJson(res, 400, { error: "OTP expired. Please request a new OTP." });
+        return;
+      }
+      if (user.pendingOtp !== otp) {
+        sendJson(res, 400, { error: "Invalid OTP. Please try again." });
+        return;
+      }
+
+      user.verified = true;
+      user.pendingOtp = "";
+      user.otpExpiresAt = 0;
+      user.verifiedAt = new Date().toISOString();
+      users[email] = user;
+      writeUsers(users);
+      sendJson(res, 200, { user: publicUser(user) });
+    } catch (error) {
+      sendJson(res, 400, { error: error.message });
+    }
+    return;
+  }
+
   if (req.method === "GET" && url.pathname === "/api/notes") {
-    sendJson(res, 200, { notes });
+    sendJson(res, 200, { notes, storage: "server" });
+    return;
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/notes/import") {
+    try {
+      const body = await parseJsonBody(req);
+      const incomingNotes = Array.isArray(body.notes) ? body.notes : [];
+      const imported = [];
+
+      incomingNotes.forEach(item => {
+        const sourceId = cleanText(item.id);
+        const alreadyImported = notes.some(note => note.sourceId && note.sourceId === sourceId);
+        const dataUrl = String(item.url || "");
+        const dataMatch = dataUrl.match(/^data:application\/pdf;base64,([a-z0-9+/=]+)$/i);
+        if (!sourceId || alreadyImported || !dataMatch) return;
+
+        const fileBuffer = Buffer.from(dataMatch[1], "base64");
+        if (!fileBuffer.length || fileBuffer.length > maxUploadBytes) return;
+
+        const id = `n${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
+        const title = cleanText(item.title, "Imported notes");
+        const filename = `${id}-${sanitize(title)}.pdf`;
+        fs.writeFileSync(path.join(uploadsDir, filename), fileBuffer);
+
+        const note = normalizeNote({
+          id,
+          sourceId,
+          title,
+          subject: cleanText(item.subject, "General"),
+          semester: cleanText(item.semester, "1"),
+          type: cleanText(item.type, "Notes"),
+          contributor: cleanText(item.contributor, "Student"),
+          uploaderEmail: cleanText(item.uploaderEmail).toLowerCase(),
+          downloads: Number(item.downloads || 0),
+          likedBy: Array.isArray(item.likedBy) ? item.likedBy : [],
+          comments: Array.isArray(item.comments) ? item.comments : [],
+          createdAt: item.createdAt || new Date().toISOString(),
+          url: `/uploads/${filename}`
+        });
+        notes.unshift(note);
+        imported.push(note);
+      });
+
+      if (imported.length) writeNotes(notes);
+      sendJson(res, 200, { imported, notes });
+    } catch (error) {
+      sendJson(res, 400, { error: error.message });
+    }
     return;
   }
 
@@ -152,6 +333,11 @@ async function handleApi(req, res, url) {
     try {
       const { fields, files } = await parseMultipart(req);
       const file = files.file;
+      const uploader = findVerifiedUser(fields.uploaderEmail);
+      if (!uploader) {
+        sendJson(res, 403, { error: "Please verify your login with OTP before uploading notes." });
+        return;
+      }
       if (!fields.title || !fields.subject || !fields.semester || !fields.type) {
         sendJson(res, 400, { error: "Please fill all upload details." });
         return;
@@ -171,8 +357,8 @@ async function handleApi(req, res, url) {
         subject: fields.subject,
         semester: fields.semester,
         type: fields.type,
-        contributor: fields.contributor || "Student",
-        uploaderEmail: fields.uploaderEmail || "",
+        contributor: uploader.name,
+        uploaderEmail: uploader.email,
         downloads: 0,
         likedBy: [],
         comments: [],
@@ -282,7 +468,7 @@ async function handleApi(req, res, url) {
     const nextNotes = notes.filter(item => item.id !== id);
     writeNotes(nextNotes);
     if (note.url?.startsWith("/uploads/")) {
-      fs.rm(path.join(rootDir, note.url), { force: true }, () => {});
+      fs.rm(path.join(uploadsDir, path.basename(note.url)), { force: true }, () => {});
     }
     sendJson(res, 200, { ok: true });
     return;

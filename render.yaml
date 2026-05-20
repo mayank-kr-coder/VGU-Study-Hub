@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: vgu-study-hub
+    env: node
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: STORAGE_DIR
+        value: /var/data
+      - key: NODE_ENV
+        value: production
+    disk:
+      name: vgu-study-hub-storage
+      mountPath: /var/data
+      sizeGB: 1

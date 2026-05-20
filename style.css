@@ -120,6 +120,13 @@ button {
   margin-top: 4px;
 }
 
+.otp-hint {
+  margin-top: 0;
+  padding: 9px 10px;
+  border-radius: 7px;
+  background: #eef4f8;
+}
+
 .secondary {
   min-height: 42px;
   padding: 0 14px;
@@ -296,6 +303,24 @@ h3 {
   display: block;
   color: #7a4708;
   margin-bottom: 4px;
+}
+
+.storage-state {
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+  margin-top: 12px;
+  padding: 0 10px;
+  border-radius: 7px;
+  color: #12604f;
+  background: #e4f5ef;
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.storage-state.local {
+  color: #74470a;
+  background: #fff1d4;
 }
 
 .field {

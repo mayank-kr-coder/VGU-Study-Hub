@@ -29,6 +29,16 @@ const loginScreen = document.getElementById("loginScreen");
 const appShell = document.getElementById("appShell");
 const userLabel = document.getElementById("userLabel");
 const userAvatar = document.getElementById("userAvatar");
+const storageState = document.getElementById("storageState");
+const storageHint = document.getElementById("storageHint");
+const otpField = document.getElementById("otpField");
+const otpHint = document.getElementById("otpHint");
+const loginSubmit = document.getElementById("loginSubmit");
+
+const authState = {
+  otpRequested: false,
+  email: ""
+};
 
 function studentInitials(name) {
   return name
@@ -40,10 +50,14 @@ function studentInitials(name) {
 }
 
 function setCurrentUser(user) {
-  state.user = user;
-  localStorage.setItem("collegeUser", JSON.stringify(user));
-  userLabel.textContent = `${user.name} / ${user.branch}`;
-  userAvatar.textContent = studentInitials(user.name);
+  state.user = {
+    ...user,
+    email: String(user.email || "").toLowerCase(),
+    verified: Boolean(user.verified)
+  };
+  localStorage.setItem("collegeUser", JSON.stringify(state.user));
+  userLabel.textContent = `${state.user.name} / ${state.user.branch}`;
+  userAvatar.textContent = studentInitials(state.user.name);
   document.getElementById("logoutBtn").textContent = "Logout";
   loginScreen.classList.add("hidden");
   appShell.classList.remove("hidden");
@@ -64,17 +78,76 @@ function showLogin() {
 }
 
 function requireLogin() {
-  if (state.user) {
+  if (state.user?.verified) {
     setCurrentUser(state.user);
     return;
   }
+  if (state.user && !state.user.verified) {
+    localStorage.removeItem("collegeUser");
+    state.user = null;
+  }
   showLogin();
+}
+
+function resetOtpForm() {
+  authState.otpRequested = false;
+  authState.email = "";
+  otpField.classList.add("hidden");
+  otpHint.textContent = "OTP will appear here in demo mode.";
+  loginSubmit.textContent = "Send OTP";
+  document.getElementById("studentOtp").value = "";
+}
+
+function getLoginFormData() {
+  return {
+    name: document.getElementById("studentName").value.trim(),
+    email: document.getElementById("studentEmail").value.trim().toLowerCase(),
+    branch: document.getElementById("studentBranch").value,
+    otp: document.getElementById("studentOtp").value.trim()
+  };
+}
+
+async function requestOtp(formData) {
+  const payload = await apiRequest("/api/auth/request-otp", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(formData)
+  });
+  authState.otpRequested = true;
+  authState.email = formData.email;
+  otpField.classList.remove("hidden");
+  loginSubmit.textContent = "Verify OTP";
+  otpHint.textContent = payload.devOtp
+    ? `Demo OTP: ${payload.devOtp}`
+    : "OTP sent. Check your email or server console.";
+}
+
+async function verifyOtp(formData) {
+  const payload = await apiRequest("/api/auth/verify-otp", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      email: formData.email,
+      otp: formData.otp
+    })
+  });
+  resetOtpForm();
+  setCurrentUser(payload.user);
 }
 
 function saveNotes() {
   if (!sharedLibrary) {
     localStorage.setItem("collegeNotes", JSON.stringify(state.notes));
   }
+}
+
+function setStorageMode(isShared, message) {
+  sharedLibrary = isShared;
+  storageState.textContent = isShared ? "Shared server storage active" : "Local browser storage only";
+  storageState.classList.toggle("local", !isShared);
+  storageHint.textContent = message || (isShared
+    ? "Uploads are saved on this server, so everyone using the hosted website can see the same notes."
+    : "Upload is disabled until the Node server is running. This keeps notes from getting trapped in one browser.");
 }
 
 function normalizeSavedNotes() {
@@ -117,12 +190,40 @@ async function apiRequest(path, options = {}) {
 async function loadNotes() {
   try {
     const payload = await apiRequest("/api/notes");
-    sharedLibrary = true;
+    setStorageMode(true);
     state.notes = (payload.notes || []).map(normalizeNote);
+    await syncLocalNotesToServer();
   } catch (error) {
-    sharedLibrary = false;
+    setStorageMode(false);
     state.notes = JSON.parse(localStorage.getItem("collegeNotes") || "[]");
     normalizeSavedNotes();
+  }
+}
+
+async function syncLocalNotesToServer() {
+  const localNotes = JSON.parse(localStorage.getItem("collegeNotes") || "[]")
+    .filter(note => String(note.url || "").startsWith("data:application/pdf;base64,"));
+  if (!localNotes.length) return;
+
+  try {
+    const payload = await apiRequest("/api/notes/import", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ notes: localNotes })
+    });
+    state.notes = (payload.notes || state.notes).map(normalizeNote);
+    const syncedSourceIds = new Set(state.notes.map(note => note.sourceId).filter(Boolean));
+    const remainingLocalNotes = localNotes.filter(note => !syncedSourceIds.has(note.id));
+    if (remainingLocalNotes.length) {
+      localStorage.setItem("collegeNotes", JSON.stringify(remainingLocalNotes));
+    } else {
+      localStorage.removeItem("collegeNotes");
+    }
+    if (payload.imported?.length) {
+      showToast(`${payload.imported.length} local upload moved to shared storage.`);
+    }
+  } catch (error) {
+    setStorageMode(true, "Shared storage is active. Some old local uploads could not be moved automatically.");
   }
 }
 
@@ -481,24 +582,15 @@ notesList.addEventListener("submit", event => {
   addComment(form.dataset.id, input.value);
 });
 
-function readPdfFile(file) {
-  return new Promise((resolve, reject) => {
-    if (!file) {
-      reject(new Error("Please select a PDF file before uploading."));
-      return;
-    }
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result);
-    reader.onerror = () => reject(reader.error);
-    reader.readAsDataURL(file);
-  });
-}
-
 document.getElementById("uploadForm").addEventListener("submit", async event => {
   event.preventDefault();
-  if (!state.user) {
+  if (!sharedLibrary) {
+    showToast("Shared storage is offline. Start the Node server before uploading.");
+    return;
+  }
+  if (!state.user?.verified) {
     showLogin();
-    showToast("Please login to upload. Browsing and downloads are open.");
+    showToast("Please verify login with OTP before uploading.");
     return;
   }
   const title = document.getElementById("noteTitle").value.trim();
@@ -507,49 +599,30 @@ document.getElementById("uploadForm").addEventListener("submit", async event => 
   const type = document.getElementById("noteType").value;
   const file = document.getElementById("noteFile").files[0];
   if (!title || !subject || !semester) return;
+  if (!file) {
+    showToast("Please select a PDF file before uploading.");
+    return;
+  }
+
+  const formData = new FormData();
+  formData.append("title", title);
+  formData.append("subject", subject);
+  formData.append("semester", semester);
+  formData.append("type", type);
+  formData.append("contributor", state.user?.name || "Student");
+  formData.append("uploaderEmail", state.user?.email || "");
+  formData.append("file", file);
 
   let note;
-  if (sharedLibrary) {
-    const formData = new FormData();
-    formData.append("title", title);
-    formData.append("subject", subject);
-    formData.append("semester", semester);
-    formData.append("type", type);
-    formData.append("contributor", state.user?.name || "Student");
-    formData.append("uploaderEmail", state.user?.email || "");
-    formData.append("file", file);
-    try {
-      const payload = await apiRequest("/api/notes", {
-        method: "POST",
-        body: formData
-      });
-      note = payload.note;
-    } catch (error) {
-      showToast(error.message);
-      return;
-    }
-  } else {
-    let url;
-    try {
-      url = await readPdfFile(file);
-    } catch (error) {
-      showToast(error.message);
-      return;
-    }
-    note = {
-      id: `n${Date.now()}`,
-      title,
-      subject,
-      semester,
-      type,
-      contributor: state.user?.name || "Student",
-      uploaderEmail: state.user?.email || "",
-      downloads: 0,
-      likedBy: [],
-      comments: [],
-      createdAt: new Date().toISOString(),
-      url
-    };
+  try {
+    const payload = await apiRequest("/api/notes", {
+      method: "POST",
+      body: formData
+    });
+    note = payload.note;
+  } catch (error) {
+    showToast(error.message);
+    return;
   }
   state.notes.unshift(normalizeNote(note));
   state.subject = "All";
@@ -565,14 +638,29 @@ openPdf.addEventListener("click", () => {
   if (note) window.open(note.url, "_blank");
 });
 
-document.getElementById("loginForm").addEventListener("submit", event => {
+document.getElementById("loginForm").addEventListener("submit", async event => {
   event.preventDefault();
-  const name = document.getElementById("studentName").value.trim();
-  const email = document.getElementById("studentEmail").value.trim();
-  const branch = document.getElementById("studentBranch").value;
-  if (!name || !email || !branch) return;
-  setCurrentUser({ name, email, branch });
-  showToast("Logged in successfully.");
+  const formData = getLoginFormData();
+  if (!formData.name || !formData.email || !formData.branch) return;
+
+  loginSubmit.disabled = true;
+  try {
+    if (!authState.otpRequested || authState.email !== formData.email) {
+      await requestOtp(formData);
+      showToast("OTP generated. Enter it to continue.");
+    } else {
+      if (!formData.otp) {
+        showToast("Please enter the OTP.");
+        return;
+      }
+      await verifyOtp(formData);
+      showToast("OTP verified. You can upload notes now.");
+    }
+  } catch (error) {
+    showToast(error.message);
+  } finally {
+    loginSubmit.disabled = false;
+  }
 });
 
 document.getElementById("browseGuest").addEventListener("click", () => {
@@ -583,6 +671,7 @@ document.getElementById("browseGuest").addEventListener("click", () => {
 document.getElementById("logoutBtn").addEventListener("click", () => {
   localStorage.removeItem("collegeUser");
   state.user = null;
+  resetOtpForm();
   showLogin();
 });
 

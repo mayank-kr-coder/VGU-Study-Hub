@@ -15,15 +15,15 @@
       <p>A student-built study library for VGU. Browse without login, download what helps, and upload material only when you want to contribute.</p>
       <div class="login-points">
         <div class="login-point"><span class="login-dot">1</span> Open access for reading and downloading</div>
-        <div class="login-point"><span class="login-dot">2</span> Contributor login for uploads</div>
+        <div class="login-point"><span class="login-dot">2</span> OTP verified contributor login for uploads</div>
         <div class="login-point"><span class="login-dot">3</span> Semester-wise notes, labs, and papers</div>
       </div>
     </div>
     <form class="login-form" id="loginForm">
       <div>
         <p class="eyebrow">Student Access</p>
-        <h2>Upload as a contributor</h2>
-        <p class="hint">Use your real name so students know who shared the material. If you only want to study, open the library directly.</p>
+        <h2>Signup or login with OTP</h2>
+        <p class="hint">Verify once with OTP before uploading. If you only want to study, open the library directly.</p>
       </div>
       <div class="field">
         <label for="studentName">Full name</label>
@@ -44,8 +44,13 @@
           <option value="Commerce">Commerce</option>
         </select>
       </div>
+      <div class="field otp-field hidden" id="otpField">
+        <label for="studentOtp">OTP</label>
+        <input class="control" id="studentOtp" inputmode="numeric" maxlength="6" placeholder="Enter 6 digit OTP">
+        <p class="hint otp-hint" id="otpHint">OTP will appear here in demo mode.</p>
+      </div>
       <div class="login-actions">
-        <button class="primary" type="submit">Login to Upload</button>
+        <button class="primary" id="loginSubmit" type="submit">Send OTP</button>
         <button class="secondary" id="browseGuest" type="button">Browse Library</button>
       </div>
     </form>
@@ -88,6 +93,13 @@
       <section class="panel">
         <h3>Upload Guidelines</h3>
         <p class="hint">Share only useful PDFs: class notes, previous papers, lab manuals, question banks, or revision sheets. Keep titles clear so freshers can find material quickly.</p>
+      </section>
+
+      <section class="panel storage-panel">
+        <p class="eyebrow">Storage</p>
+        <h3>Library Mode</h3>
+        <div class="storage-state" id="storageState">Checking storage...</div>
+        <p class="hint" id="storageHint">Shared storage keeps uploaded notes visible for everyone who opens this hosted website.</p>
       </section>
 
       <section class="panel">
